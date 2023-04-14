@@ -49,6 +49,8 @@ extern "C" {
 
 /* USER CODE END EM */
 
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
@@ -69,12 +71,12 @@ void Error_Handler(void);
 #define MAP_GPIO_Port GPIOA
 #define O2_Pin GPIO_PIN_4
 #define O2_GPIO_Port GPIOA
+#define IGNITION_Pin GPIO_PIN_6
+#define IGNITION_GPIO_Port GPIOA
+#define INJECTION_Pin GPIO_PIN_7
+#define INJECTION_GPIO_Port GPIOA
 #define CRANKSHAFT_Pin GPIO_PIN_15
 #define CRANKSHAFT_GPIO_Port GPIOA
-#define INJECTION_Pin GPIO_PIN_8
-#define INJECTION_GPIO_Port GPIOB
-#define IGNITION_Pin GPIO_PIN_9
-#define IGNITION_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

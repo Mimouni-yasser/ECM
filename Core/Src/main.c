@@ -85,7 +85,11 @@ uint32_t current_time=0;
 uint32_t elapsed_time=0;
 uint32_t last_time=0;
 uint32_t captured_value=0;
-
+bool fired = false;
+uint32_t time_since_cycle = 0;
+uint16_t times_overflown = 0;
+uint16_t cycles_to_IGN = 0;
+uint32_t IGN_Time = 0;
 float RPM_val=0;
 #define IAT_val Data[0]
 #define CLT_val Data[1]
@@ -100,9 +104,30 @@ if (htim->Instance == TIM2) {
 	captured_value++;
 	RPM_val = (1 / (float)elapsed_time)*2*60*1000;
 	last_time=current_time;
-
+	fired = false;
+	time_since_cycle = 0;
+	times_overflown = 0;
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, 1);
+	TIM3->CCR2=INJ*1000;
 	TIM3->CNT=0;
+	}
+
+if(htim->Instance == TIM3)
+{
+	times_overflown++;
+	cycles_to_IGN--;
+	if(!cycles_to_IGN)
+		TIM3->CCR1 = IGN_time;
 }
+}
+
+void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	if (htim->Instance == TIM2 && htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1 && !fired)
+	{
+		TIM3->CCR1 += 2000;
+		fired = true;
+	}
 }
 /* USER CODE END 0 */
 
@@ -389,12 +414,13 @@ static void MX_TIM3_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
 
   /* USER CODE BEGIN TIM3_Init 1 */
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 71;
+  htim3.Init.Prescaler = 35;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim3.Init.Period = 65535;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -408,15 +434,33 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_OC_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
+  sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_INACTIVE;
+  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
 
 }
 
@@ -449,23 +493,12 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, INJECTION_Pin|IGNITION_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : CAMSHAFT_Pin */
   GPIO_InitStruct.Pin = CAMSHAFT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(CAMSHAFT_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : INJECTION_Pin IGNITION_Pin */
-  GPIO_InitStruct.Pin = INJECTION_Pin|IGNITION_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 }
 
@@ -533,11 +566,12 @@ void Read_lookup_F(void const * argument)
   {
 	 IGN= Interpolate_2D(Ignition_Timing,TBP,RPM,RPM_val,TPS_val);
 	 INJ=Interpolate_2D(Injection_Timing,TBP,RPM,RPM_val,TPS_val);
+	 IGN_Time = (360.0-IGN)/(60.0*RPM);
 	 //VE=Interpolate_2D(VE_Table,MAP,RPM,RPM_val,MAP_val);
-  }
+	 cycles_to_IGN = (uint32_t) IGN_Time/65535;
   /* USER CODE END Read_lookup_F */
+  }
 }
-
 /* USER CODE BEGIN Header_Fire_Ignition_F */
 /**
 * @brief Function implementing the Fire_Ignition thread.
