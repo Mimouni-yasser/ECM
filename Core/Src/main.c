@@ -117,13 +117,13 @@ if(htim->Instance == TIM3)
 	times_overflown++;
 	cycles_to_IGN--;
 	if(!cycles_to_IGN)
-		TIM3->CCR1 = IGN_time;
+		TIM3->CCR1 = IGN_time-times_overflown*65535;
 }
 }
 
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	if (htim->Instance == TIM2 && htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1 && !fired)
+	if (htim->Instance == TIM3 && htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1 && !fired)
 	{
 		TIM3->CCR1 += 2000;
 		fired = true;
@@ -566,7 +566,7 @@ void Read_lookup_F(void const * argument)
   {
 	 IGN= Interpolate_2D(Ignition_Timing,TBP,RPM,RPM_val,TPS_val);
 	 INJ=Interpolate_2D(Injection_Timing,TBP,RPM,RPM_val,TPS_val);
-	 IGN_Time = (360.0-IGN)/(60.0*RPM);
+	 IGN_Time = (360.0-IGN)/(6.0*RPM)*1000000;
 	 //VE=Interpolate_2D(VE_Table,MAP,RPM,RPM_val,MAP_val);
 	 cycles_to_IGN = (uint32_t) IGN_Time/65535;
   /* USER CODE END Read_lookup_F */
