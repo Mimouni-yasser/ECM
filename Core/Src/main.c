@@ -40,19 +40,19 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-ADC_HandleTypeDef hadc1;
-DMA_HandleTypeDef hdma_adc1;
+ADC_HandleTypeDef hadc1; //ADC1 handle structure, used to configure and control the ADC1 peripheral, and to initialize it
+DMA_HandleTypeDef hdma_adc1; //DMA handle structure, used to configure and control the DMA channel used to transfer data from the ADC1 peripheral to memory
 
-CAN_HandleTypeDef hcan;
+CAN_HandleTypeDef hcan; //CAN handle structure, used to configure and control the CAN peripheral, and to initialize it
 
-TIM_HandleTypeDef htim2;
-TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim2; //TIM2 handle structure, used to configure and control the TIM2 peripheral, and to initialize it
+TIM_HandleTypeDef htim3; //TIM3 handle structure, used to configure and control the TIM3 peripheral, and to initialize it
 
-osThreadId Read_SensorsHandle;
-osThreadId Read_LookupHandle;
-osThreadId Fire_IgnitionHandle;
-osThreadId Fire_InjectionHandle;
-osThreadId Send_CANHandle;
+osThreadId Read_SensorsHandle;//Thread handler, used to initialize the thread responsible for reading the sensors
+osThreadId Read_LookupHandle; //Thread handler, used to initialize the thread responsible for reading the lookup tables
+osThreadId Fire_IgnitionHandle;  //Thread handler, used to initialize the thread responsible for firing the ignition
+osThreadId Fire_InjectionHandle; //Thread handler, used to initialize the thread responsible for firing the injection
+osThreadId Send_CANHandle; //Thread handler, used to initialize the thread responsible for sending the CAN messages
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -65,11 +65,11 @@ static void MX_ADC1_Init(void);
 static void MX_CAN_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
-void Read_Sensors_F(void const * argument);
-void Read_lookup_F(void const * argument);
-void Fire_Ignition_F(void const * argument);
-void Fire_Injection_F(void const * argument);
-void Send_CAN_F(void const * argument);
+void Read_Sensors_F(void const * argument); //function to read sensors, used by the Thread Read_Sensors
+void Read_lookup_F(void const * argument); //function to read lookup tables, used by the Thread Read_Lookup
+void Fire_Ignition_F(void const * argument); //function to fire the ignition, used by the Thread Fire_Ignition - not used in yet, firing is handled in timers
+void Fire_Injection_F(void const * argument); //function to fire the injection, used by the Thread Fire_Injection - not used in yet, firing is handled in timers
+void Send_CAN_F(void const * argument);//function to send can messages, used by the Thread Send_CAN, not yet implemented
 
 /* USER CODE BEGIN PFP */
 
@@ -77,56 +77,71 @@ void Send_CAN_F(void const * argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-uint32_t Data[5];
-float IGN=0;
-float INJ=0;
+uint32_t Data[5]; //variable to store the data read from the sensors (IAT, CLT, TPS, MAP, O2)
+float IGN=0;//variable to store the ignition advance, read from lookup tables with the help of threads
+float INJ=0;//variable to store the injection advance, read from lookup tables with the help of threads
 //float VE=0
-uint32_t current_time=0;
-uint32_t elapsed_time=0;
-uint32_t last_time=0;
-uint32_t captured_value=0;
-bool fired = false;
-uint32_t time_since_cycle = 0;
-uint16_t times_overflown = 0;
-uint16_t cycles_to_IGN = 0;
-uint32_t IGN_Time = 0;
-float RPM_val=0;
+uint32_t current_time=0; //variable to store the current time
+uint32_t elapsed_time=0; //variable to store the time elapsed since beginning of cycle
+uint32_t last_time=0; //variable to store the time of the last interrupt on TIM2 (720 degrees of crankshaft)
+uint32_t captured_value=0; //variable to store the number of cycles since beginning of program
+bool fired = false;//variable to store if the ignition has been fired
+
+uint32_t time_since_cycle = 0;//variable to store the time since the beginning of the cycle
+uint16_t times_overflown = 0;//variable to store the number of times the timer has overflown
+uint16_t cycles_to_IGN = 0;//variable to store the number of cycles until the ignition is fired
+uint32_t IGN_Time = 0;//variable to store the time of the ignition
+float RPM_val=0;//variable to store the RPM value
+
+//defines for the sensors, Data is read through DMA from ADC1
 #define IAT_val Data[0]
 #define CLT_val Data[1]
 #define TPS_val Data[2]
 #define MAP_val Data[3]
 #define O2_val  Data[4]
 
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-if (htim->Instance == TIM2) {
-	current_time=HAL_GetTick();
-	elapsed_time=current_time-last_time;
-	captured_value++;
-	RPM_val = (1 / (float)elapsed_time)*2*60*1000;
-	last_time=current_time;
-	fired = false;
-	time_since_cycle = 0;
-	times_overflown = 0;
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, 1);
-	TIM3->CCR2=INJ*1000;
-	TIM3->CNT=0;
+//TODO: make shorter, consider adding a flag and doing everything in main while loop
+//function called every time the timer TIM2 overflows
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+if (htim->Instance == TIM2) { //if the timer is TIM2
+	current_time=HAL_GetTick();//get the current time
+	elapsed_time=current_time-last_time;//calculate the time elapsed since the last interrupt
+	captured_value++;//increment the number of cycles since the beginning of the program, only for debuggin purposes
+	RPM_val = (1 / (float)elapsed_time)*2*60*1000;//calculate the RPM value TODO: optimize, very crude
+	last_time=current_time;//set the last time to the current time
+  }
+	fired = false;//set the fired flag to false
+	time_since_cycle = 0;//set the time since the beginning of the cycle to 0
+	times_overflown = 0;//set the number of times the timer 3 has overflown to 0
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, 1); //set the pin B6 to high, used to start the injection and will be set to low by the output compare register functionnality
+	TIM3->CCR2=INJ*1000;//set the output compare register to the value of the injection timing using the value we got from the lookup table
+	TIM3->CNT=0;//reset the counter to 0, so that the timer can start counting from 0deg of crankshaft
+  /*
+    explanation:
+     TIM3 counts microseconds, so we need to multiply the value of injection timing (calculated in thread) by 1000 to get microseconds
+     after the TIM3 gets to CCR2, it pulls the pin B6 low, which ends the injection
+      TIM3->CNT=0; resets the counter to 0, so that the timer can start counting from 0deg of crankshaft
+  */
 	}
 
-if(htim->Instance == TIM3)
+if(htim->Instance == TIM3)//if the timer is TIM3
 {
-	times_overflown++;
-	cycles_to_IGN--;
-	if(!cycles_to_IGN)
-		TIM3->CCR1 = IGN_time-times_overflown*65535;
+	times_overflown++; 
+	cycles_to_IGN--;//decrement the number of times the TIM3 overflows until the ignition is fired
+	if(!cycles_to_IGN)//if the number of cycles until the ignition is fired is 0
+		TIM3->CCR1 = IGN_time-times_overflown*65535;//set the output compare register to the value of the ignition timing using the value we got from the lookup table
 }
 }
 
+//function called every time the timer TIM3 reaches the value of the output compare register
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	if (htim->Instance == TIM3 && htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1 && !fired)
+	if (htim->Instance == TIM3 && htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1 && !fired)//check if the timer is TIM3, if the channel is 1 and if the ignition has not been fired yet
 	{
-		TIM3->CCR1 += 2000;
-		fired = true;
+		TIM3->CCR1 += 2000;//add 2000 microseconds to the output compare register, so that the ignition is turned off 2ms after it's turned on
+		fired = true;//set the fired flag to true
+    // the PIN is toggled by hardware
 	}
 }
 /* USER CODE END 0 */
@@ -165,8 +180,8 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-  HAL_ADC_Start_DMA(&hadc1, Data,5);
-  HAL_TIM_Base_Start_IT(&htim2);
+  HAL_ADC_Start_DMA(&hadc1, Data,5);//start the ADC1 in DMA mode, reading 5 values
+  HAL_TIM_Base_Start_IT(&htim2);//start the timer TIM2 in interrupt mode
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -504,7 +519,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 /**
- * this function fucking interpolates it's in the name
+ * @brief this function interpolates it's in the name
  */
 float Interpolate_2D(float T[N][N], const float *Var, const float *RPM, float x, float y){
     if (x < 300.0 || x > 7000.0 || y < 20.0 || y > 200.0) {
@@ -566,9 +581,9 @@ void Read_lookup_F(void const * argument)
   {
 	 IGN= Interpolate_2D(Ignition_Timing,TBP,RPM,RPM_val,TPS_val);
 	 INJ=Interpolate_2D(Injection_Timing,TBP,RPM,RPM_val,TPS_val);
-	 IGN_Time = (360.0-IGN)/(6.0*RPM)*1000000;
+	 IGN_Time = (360.0-IGN)/(6.0*RPM)*1000000; //calulate the time in us from the angle we got from the table
 	 //VE=Interpolate_2D(VE_Table,MAP,RPM,RPM_val,MAP_val);
-	 cycles_to_IGN = (uint32_t) IGN_Time/65535;
+	 cycles_to_IGN = (uint32_t) IGN_Time/65535; //how many overflows to make the IGN pulse (since TIM3 only counts to 65535 and the IGN pulse is longer than that)
   /* USER CODE END Read_lookup_F */
   }
 }
@@ -649,11 +664,5 @@ void Error_Handler(void)
   * @param  line: assert_param error line source number
   * @retval None
   */
-void assert_failed(uint8_t *file, uint32_t line)
-{
-  /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
-}
+void assert_failed(uint8_t *file, uint32_t line){}
 #endif /* USE_FULL_ASSERT */
