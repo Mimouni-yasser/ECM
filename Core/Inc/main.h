@@ -59,8 +59,6 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define CAMSHAFT_Pin GPIO_PIN_15
-#define CAMSHAFT_GPIO_Port GPIOC
 #define IAT_Pin GPIO_PIN_0
 #define IAT_GPIO_Port GPIOA
 #define CLT_Pin GPIO_PIN_1

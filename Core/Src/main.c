@@ -22,6 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include<stdbool.h>
 #include "Lookup_Tables.h"
 /* USER CODE END Includes */
 
@@ -40,19 +41,19 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-ADC_HandleTypeDef hadc1; //ADC1 handle structure, used to configure and control the ADC1 peripheral, and to initialize it
-DMA_HandleTypeDef hdma_adc1; //DMA handle structure, used to configure and control the DMA channel used to transfer data from the ADC1 peripheral to memory
+ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
 
-CAN_HandleTypeDef hcan; //CAN handle structure, used to configure and control the CAN peripheral, and to initialize it
+CAN_HandleTypeDef hcan;
 
-TIM_HandleTypeDef htim2; //TIM2 handle structure, used to configure and control the TIM2 peripheral, and to initialize it
-TIM_HandleTypeDef htim3; //TIM3 handle structure, used to configure and control the TIM3 peripheral, and to initialize it
+TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
 
-osThreadId Read_SensorsHandle;//Thread handler, used to initialize the thread responsible for reading the sensors
-osThreadId Read_LookupHandle; //Thread handler, used to initialize the thread responsible for reading the lookup tables
-osThreadId Fire_IgnitionHandle;  //Thread handler, used to initialize the thread responsible for firing the ignition
-osThreadId Fire_InjectionHandle; //Thread handler, used to initialize the thread responsible for firing the injection
-osThreadId Send_CANHandle; //Thread handler, used to initialize the thread responsible for sending the CAN messages
+osThreadId Read_SensorsHandle;
+osThreadId Read_LookupHandle;
+osThreadId Fire_IgnitionHandle;
+osThreadId Fire_InjectionHandle;
+osThreadId Send_CANHandle;
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -65,11 +66,11 @@ static void MX_ADC1_Init(void);
 static void MX_CAN_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
-void Read_Sensors_F(void const * argument); //function to read sensors, used by the Thread Read_Sensors
-void Read_lookup_F(void const * argument); //function to read lookup tables, used by the Thread Read_Lookup
-void Fire_Ignition_F(void const * argument); //function to fire the ignition, used by the Thread Fire_Ignition - not used in yet, firing is handled in timers
-void Fire_Injection_F(void const * argument); //function to fire the injection, used by the Thread Fire_Injection - not used in yet, firing is handled in timers
-void Send_CAN_F(void const * argument);//function to send can messages, used by the Thread Send_CAN, not yet implemented
+void Read_Sensors_F(void const * argument);
+void Read_lookup_F(void const * argument);
+void Fire_Ignition_F(void const * argument);
+void Fire_Injection_F(void const * argument);
+void Send_CAN_F(void const * argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -86,11 +87,12 @@ uint32_t elapsed_time=0; //variable to store the time elapsed since beginning of
 uint32_t last_time=0; //variable to store the time of the last interrupt on TIM2 (720 degrees of crankshaft)
 uint32_t captured_value=0; //variable to store the number of cycles since beginning of program
 bool fired = false;//variable to store if the ignition has been fired
+bool sync=0;
 
 uint32_t time_since_cycle = 0;//variable to store the time since the beginning of the cycle
 uint16_t times_overflown = 0;//variable to store the number of times the timer has overflown
 uint16_t cycles_to_IGN = 0;//variable to store the number of cycles until the ignition is fired
-uint32_t IGN_Time = 0;//variable to store the time of the ignition
+uint32_t IGN_time = 0;//variable to store the time of the ignition
 float RPM_val=0;//variable to store the RPM value
 
 //defines for the sensors, Data is read through DMA from ADC1
@@ -101,6 +103,14 @@ float RPM_val=0;//variable to store the RPM value
 #define O2_val  Data[4]
 
 //TODO: make shorter, consider adding a flag and doing everything in main while loop
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  TIM2->CNT = 0;
+  HAL_NVIC_DisableIRQ(EXTI3_IRQn);
+  sync=true;
+}
+
 //function called every time the timer TIM2 overflows
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
@@ -123,15 +133,18 @@ if (htim->Instance == TIM2) { //if the timer is TIM2
      after the TIM3 gets to CCR2, it pulls the pin B6 low, which ends the injection
       TIM3->CNT=0; resets the counter to 0, so that the timer can start counting from 0deg of crankshaft
   */
-	}
 
 if(htim->Instance == TIM3)//if the timer is TIM3
 {
-	times_overflown++; 
+	times_overflown++;
 	cycles_to_IGN--;//decrement the number of times the TIM3 overflows until the ignition is fired
-	if(!cycles_to_IGN)//if the number of cycles until the ignition is fired is 0
+	if(!cycles_to_IGN){//if the number of cycles until the ignition is fired is 0
 		TIM3->CCR1 = IGN_time-times_overflown*65535;//set the output compare register to the value of the ignition timing using the value we got from the lookup table
-}
+  if(cycles_to_IGN==0){
+		 TIM3->CCR1=IGN_time;
+	 }
+  }
+	}
 }
 
 //function called every time the timer TIM3 reaches the value of the output compare register
@@ -181,7 +194,10 @@ int main(void)
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   HAL_ADC_Start_DMA(&hadc1, Data,5);//start the ADC1 in DMA mode, reading 5 values
+  while(!sync){};
   HAL_TIM_Base_Start_IT(&htim2);//start the timer TIM2 in interrupt mode
+  HAL_TIM_OC_Start_IT(&htim3, TIM_CHANNEL_ALL);
+
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -227,7 +243,6 @@ int main(void)
 
   /* Start scheduler */
   osKernelStart();
-
   /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -388,7 +403,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 0;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 65535;
+  htim2.Init.Period = 69;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -503,18 +518,26 @@ static void MX_DMA_Init(void)
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
+/* USER CODE BEGIN MX_GPIO_Init_1 */
+/* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
-  /*Configure GPIO pin : CAMSHAFT_Pin */
-  GPIO_InitStruct.Pin = CAMSHAFT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  /*Configure GPIO pin : PB3 */
+  GPIO_InitStruct.Pin = GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(CAMSHAFT_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
+/* USER CODE BEGIN MX_GPIO_Init_2 */
+/* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
@@ -579,14 +602,16 @@ void Read_lookup_F(void const * argument)
   /* Infinite loop */
   for(;;)
   {
-	 IGN= Interpolate_2D(Ignition_Timing,TBP,RPM,RPM_val,TPS_val);
-	 INJ=Interpolate_2D(Injection_Timing,TBP,RPM,RPM_val,TPS_val);
-	 IGN_Time = (360.0-IGN)/(6.0*RPM)*1000000; //calulate the time in us from the angle we got from the table
+	 IGN= Interpolate_2D(Ignition_Timing,TBP,RPM,RPM_val,30);
+	 INJ=Interpolate_2D(Injection_Timing,TBP,RPM,RPM_val,30);
+	 IGN_time = ((360.0-IGN)/(6.0*RPM_val))*1000000; //calulate the time in us from the angle we got from the table
 	 //VE=Interpolate_2D(VE_Table,MAP,RPM,RPM_val,MAP_val);
-	 cycles_to_IGN = (uint32_t) IGN_Time/65535; //how many overflows to make the IGN pulse (since TIM3 only counts to 65535 and the IGN pulse is longer than that)
-  /* USER CODE END Read_lookup_F */
+	 cycles_to_IGN = (uint32_t) IGN_time/65535; //how many overflows to make the IGN pulse (since TIM3 only counts to 65535 and the IGN pulse is longer than that)
+	 TIM3->CCR1=IGN_time;
   }
+  /* USER CODE END Read_lookup_F */
 }
+
 /* USER CODE BEGIN Header_Fire_Ignition_F */
 /**
 * @brief Function implementing the Fire_Ignition thread.
@@ -664,5 +689,11 @@ void Error_Handler(void)
   * @param  line: assert_param error line source number
   * @retval None
   */
-void assert_failed(uint8_t *file, uint32_t line){}
+void assert_failed(uint8_t *file, uint32_t line)
+{
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
 #endif /* USE_FULL_ASSERT */

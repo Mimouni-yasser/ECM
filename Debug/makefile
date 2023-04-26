@@ -64,8 +64,8 @@ all: main-build
 main-build: ECM.elf secondary-outputs
 
 # Tool invocations
-ECM.elf ECM.map: $(OBJS) $(USER_OBJS) C:\Users\hp\Documents\STM\Workspace\ECM\STM32F103C6TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "ECM.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"C:\Users\hp\Documents\STM\Workspace\ECM\STM32F103C6TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="ECM.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+ECM.elf ECM.map: $(OBJS) $(USER_OBJS) /home/ghast/Desktop/pfs\ project/ECM_code/ECM/STM32F103C6TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "ECM.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"/home/ghast/Desktop/pfs project/ECM_code/ECM/STM32F103C6TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="ECM.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

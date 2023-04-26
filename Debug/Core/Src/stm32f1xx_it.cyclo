@@ -1,0 +1,11 @@
+stm32f1xx_it.c:73:6:NMI_Handler	1
+stm32f1xx_it.c:88:6:HardFault_Handler	1
+stm32f1xx_it.c:103:6:MemManage_Handler	1
+stm32f1xx_it.c:118:6:BusFault_Handler	1
+stm32f1xx_it.c:133:6:UsageFault_Handler	1
+stm32f1xx_it.c:148:6:DebugMon_Handler	1
+stm32f1xx_it.c:161:6:SysTick_Handler	2
+stm32f1xx_it.c:190:6:EXTI3_IRQHandler	1
+stm32f1xx_it.c:204:6:DMA1_Channel1_IRQHandler	1
+stm32f1xx_it.c:218:6:TIM2_IRQHandler	1
+stm32f1xx_it.c:232:6:TIM3_IRQHandler	1
