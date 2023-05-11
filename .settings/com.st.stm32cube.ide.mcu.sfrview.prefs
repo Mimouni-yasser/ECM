@@ -1,2 +1,2 @@
 eclipse.preferences.version=1
-sfrviewstate={"fFavorites"\:{"fLists"\:{}},"fProperties"\:{"fNodeProperties"\:{}}}
+sfrviewstate={"fFavorites"\:{"fLists"\:{}},"fProperties"\:{"fNodeProperties"\:{"STM32F103/GPIOA/ODR"\:{"fNodeProperties"\:{"autoupdate"\:"false"}},"STM32F103/TIM2/CNT"\:{"fNodeProperties"\:{"autoupdate"\:"true"}},"STM32F103/TIM3/CCR1"\:{"fNodeProperties"\:{"autoupdate"\:"true"}},"STM32F103/TIM3/CNT"\:{"fNodeProperties"\:{"autoupdate"\:"true"}}}}}

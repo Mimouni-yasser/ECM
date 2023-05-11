@@ -59,24 +59,6 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define CAMSHAFT_Pin GPIO_PIN_15
-#define CAMSHAFT_GPIO_Port GPIOC
-#define IAT_Pin GPIO_PIN_0
-#define IAT_GPIO_Port GPIOA
-#define CLT_Pin GPIO_PIN_1
-#define CLT_GPIO_Port GPIOA
-#define TPS_Pin GPIO_PIN_2
-#define TPS_GPIO_Port GPIOA
-#define MAP_Pin GPIO_PIN_3
-#define MAP_GPIO_Port GPIOA
-#define O2_Pin GPIO_PIN_4
-#define O2_GPIO_Port GPIOA
-#define IGNITION_Pin GPIO_PIN_6
-#define IGNITION_GPIO_Port GPIOA
-#define INJECTION_Pin GPIO_PIN_7
-#define INJECTION_GPIO_Port GPIOA
-#define CRANKSHAFT_Pin GPIO_PIN_15
-#define CRANKSHAFT_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 

@@ -9,10 +9,6 @@ RM := rm -rf
 
 # All of the sources participating in the build are defined here
 -include sources.mk
--include Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/subdir.mk
--include Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3/subdir.mk
--include Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS/subdir.mk
--include Middlewares/Third_Party/FreeRTOS/Source/subdir.mk
 -include Drivers/STM32F1xx_HAL_Driver/Src/subdir.mk
 -include Core/Startup/subdir.mk
 -include Core/Src/subdir.mk
@@ -38,34 +34,34 @@ $(wildcard ../makefile.init) \
 $(wildcard ../makefile.targets) \
 
 
-BUILD_ARTIFACT_NAME := ECM
+BUILD_ARTIFACT_NAME := PWM_ECM
 BUILD_ARTIFACT_EXTENSION := elf
 BUILD_ARTIFACT_PREFIX :=
 BUILD_ARTIFACT := $(BUILD_ARTIFACT_PREFIX)$(BUILD_ARTIFACT_NAME)$(if $(BUILD_ARTIFACT_EXTENSION),.$(BUILD_ARTIFACT_EXTENSION),)
 
 # Add inputs and outputs from these tool invocations to the build variables 
 EXECUTABLES += \
-ECM.elf \
+PWM_ECM.elf \
 
 MAP_FILES += \
-ECM.map \
+PWM_ECM.map \
 
 SIZE_OUTPUT += \
 default.size.stdout \
 
 OBJDUMP_LIST += \
-ECM.list \
+PWM_ECM.list \
 
 
 # All Target
 all: main-build
 
 # Main-build Target
-main-build: ECM.elf secondary-outputs
+main-build: PWM_ECM.elf secondary-outputs
 
 # Tool invocations
-ECM.elf ECM.map: $(OBJS) $(USER_OBJS) C:\Users\hp\Documents\STM\Workspace\ECM\STM32F103C6TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "ECM.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"C:\Users\hp\Documents\STM\Workspace\ECM\STM32F103C6TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="ECM.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+PWM_ECM.elf PWM_ECM.map: $(OBJS) $(USER_OBJS) C:\Users\hp\Documents\STM\Workspace\PWM_ECM\STM32F103C6TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "PWM_ECM.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"C:\Users\hp\Documents\STM\Workspace\PWM_ECM\STM32F103C6TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="PWM_ECM.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
@@ -74,14 +70,14 @@ default.size.stdout: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
 	@echo 'Finished building: $@'
 	@echo ' '
 
-ECM.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "ECM.list"
+PWM_ECM.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "PWM_ECM.list"
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) ECM.elf ECM.list ECM.map default.size.stdout
+	-$(RM) PWM_ECM.elf PWM_ECM.list PWM_ECM.map default.size.stdout
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST)
