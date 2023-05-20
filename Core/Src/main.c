@@ -78,22 +78,19 @@ void Send_CAN_F(void const * argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-uint32_t Data[5]; //variable to store the data read from the sensors (IAT, CLT, TPS, MAP, O2)
-float IGN=0;//variable to store the ignition advance, read from lookup tables with the help of threads
-float INJ=0;//variable to store the injection advance, read from lookup tables with the help of threads
-//float VE=0
-uint32_t current_time=0; //variable to store the current time
-uint32_t elapsed_time=0; //variable to store the time elapsed since beginning of cycle
-uint32_t last_time=0; //variable to store the time of the last interrupt on TIM2 (720 degrees of crankshaft)
-uint32_t captured_value=0; //variable to store the number of cycles since beginning of program
-bool fired = false;//variable to store if the ignition has been fired
-bool sync=0;
+// Define the minimum and maximum values for each parameter
+#define TPS_MIN_ANGLE      0     // Minimum throttle angle (degrees)
+#define TPS_MAX_ANGLE      90    // Maximum throttle angle (degrees)
+#define MAP_MIN_PRESSURE   20    // Minimum MAP pressure (kPa)
+#define MAP_MAX_PRESSURE   200   // Maximum MAP pressure (kPa)
+#define IAT_MIN_TEMP       -40   // Minimum IAT temperature (degrees Celsius)
+#define IAT_MAX_TEMP       100   // Maximum IAT temperature (degrees Celsius)
+#define O2_MIN_AFR         20.0f // Minimum AFR (air/fuel ratio)
+#define O2_MAX_AFR         9.0f  // Maximum AFR (air/fuel ratio)
+#define CLT_MIN_TEMP       -40   // Minimum CLT temperature (degrees Celsius)
+#define CLT_MAX_TEMP       100   // Maximum CLT temperature (degrees Celsius)
 
-uint32_t time_since_cycle = 0;//variable to store the time since the beginning of the cycle
-uint16_t times_overflown = 0;//variable to store the number of times the timer has overflown
-uint16_t cycles_to_IGN = 0;//variable to store the number of cycles until the ignition is fired
-uint32_t IGN_time = 0;//variable to store the time of the ignition
-float RPM_val=0;//variable to store the RPM value
+uint32_t Data[5]; //variable to store the data read from the sensors (IAT, CLT, TPS, MAP, O2)
 
 //defines for the sensors, Data is read through DMA from ADC1
 #define IAT_val Data[0]
@@ -101,62 +98,57 @@ float RPM_val=0;//variable to store the RPM value
 #define TPS_val Data[2]
 #define MAP_val Data[3]
 #define O2_val  Data[4]
+float normalize_adc_value(uint16_t adc_val, float min_val, float max_val);
+//variable to store the data read from the sensors (IAT, CLT, TPS, MAP, O2)
+float IGN=0;//variable to store the ignition advance, read from lookup tables with the help of threads
+float INJ=0;//variable to store the injection advance, read from lookup tables with the help of threads
+//float VE=0
+uint32_t current_time=0; //variable to store the current time
+uint32_t elapsed_time=0; //variable to store the time elapsed since beginning of cycle
+uint32_t last_time=0; //variable to store the time of the last interrupt on TIM2 (720 degrees of crankshaft)
+uint32_t captured_value=0; //variable to store the number of cycles since beginning of program
+float fired=0;
+float sync= 0;
+float cycles=0;
+uint32_t ignition_duration = 2; //2ms
+
+uint32_t time_since_cycle = 0;//variable to store the time since the beginning of the cycle
+uint16_t times_overflown = 0;//variable to store the number of times the timer has overflown
+uint16_t cycles_to_IGN = 0;//variable to store the number of cycles until the ignition is fired
+uint32_t IGN_time = 0;//variable to store the time of the ignition
+float RPM_val=0;//variable to store the RPM value
 
 //TODO: make shorter, consider adding a flag and doing everything in main while loop
-
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
+//CAN Config
+CAN_TxHeaderTypeDef TxHeader;
+uint32_t CAN_Mailbox;
+uint8_t rpm_data[3];//3bytes
+uint8_t tmp_data[3];//3 bytes
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
   TIM2->CNT = 0;
+  TIM3->CNT = 0;
   HAL_NVIC_DisableIRQ(EXTI3_IRQn);
-  sync=true;
+  sync++;
 }
 
-//function called every time the timer TIM2 overflows
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-if (htim->Instance == TIM2) { //if the timer is TIM2
-	current_time=HAL_GetTick();//get the current time
-	elapsed_time=current_time-last_time;//calculate the time elapsed since the last interrupt
-	captured_value++;//increment the number of cycles since the beginning of the program, only for debuggin purposes
-	RPM_val = (1 / (float)elapsed_time)*2*60*1000;//calculate the RPM value TODO: optimize, very crude
-	last_time=current_time;//set the last time to the current time
-  }
-	fired = false;//set the fired flag to false
-	time_since_cycle = 0;//set the time since the beginning of the cycle to 0
-	times_overflown = 0;//set the number of times the timer 3 has overflown to 0
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, 1); //set the pin B6 to high, used to start the injection and will be set to low by the output compare register functionnality
-	TIM3->CCR2=INJ*1000;//set the output compare register to the value of the injection timing using the value we got from the lookup table
-	TIM3->CNT=0;//reset the counter to 0, so that the timer can start counting from 0deg of crankshaft
-  /*
-    explanation:
-     TIM3 counts microseconds, so we need to multiply the value of injection timing (calculated in thread) by 1000 to get microseconds
-     after the TIM3 gets to CCR2, it pulls the pin B6 low, which ends the injection
-      TIM3->CNT=0; resets the counter to 0, so that the timer can start counting from 0deg of crankshaft
-  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+if (htim->Instance == TIM2) {
+	current_time=HAL_GetTick();
+	elapsed_time=current_time-last_time;
+	RPM_val = (1 / (float)elapsed_time)*2*60*1000;
+	last_time=current_time;
 
-if(htim->Instance == TIM3)//if the timer is TIM3
-{
-	times_overflown++;
-	cycles_to_IGN--;//decrement the number of times the TIM3 overflows until the ignition is fired
-	if(!cycles_to_IGN){//if the number of cycles until the ignition is fired is 0
-		TIM3->CCR1 = IGN_time-times_overflown*65535;//set the output compare register to the value of the ignition timing using the value we got from the lookup table
-  if(cycles_to_IGN==0){
-		 TIM3->CCR1=IGN_time;
-	 }
-  }
-	}
+	TIM3->CCR1=(uint32_t)INJ*10;
+	TIM3->CCR2=(uint32_t)IGN_time*10;
+	TIM3->CCR3=(uint32_t)IGN_time*10+10*ignition_duration;
+	TIM3->CNT=0;
+	cycles++;
+
+}
 }
 
 //function called every time the timer TIM3 reaches the value of the output compare register
-void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
-{
-	if (htim->Instance == TIM3 && htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1 && !fired)//check if the timer is TIM3, if the channel is 1 and if the ignition has not been fired yet
-	{
-		TIM3->CCR1 += 2000;//add 2000 microseconds to the output compare register, so that the ignition is turned off 2ms after it's turned on
-		fired = true;//set the fired flag to true
-    // the PIN is toggled by hardware
-	}
-}
+
 /* USER CODE END 0 */
 
 /**
@@ -193,11 +185,13 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-  HAL_ADC_Start_DMA(&hadc1, Data,5);//start the ADC1 in DMA mode, reading 5 values
+  //HAL_ADC_Start_DMA(&hadc1, Data,5);//start the ADC1 in DMA mode, reading 5 values
   while(!sync){};
   HAL_TIM_Base_Start_IT(&htim2);//start the timer TIM2 in interrupt mode
-  HAL_TIM_OC_Start_IT(&htim3, TIM_CHANNEL_ALL);
-
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+  HAL_CAN_Start(&hcan);
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -268,10 +262,13 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -281,17 +278,17 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
-  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV2;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV6;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
@@ -361,11 +358,11 @@ static void MX_CAN_Init(void)
 
   /* USER CODE END CAN_Init 1 */
   hcan.Instance = CAN1;
-  hcan.Init.Prescaler = 16;
+  hcan.Init.Prescaler = 9;
   hcan.Init.Mode = CAN_MODE_NORMAL;
   hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan.Init.TimeSeg1 = CAN_BS1_4TQ;
-  hcan.Init.TimeSeg2 = CAN_BS2_5TQ;
+  hcan.Init.TimeSeg1 = CAN_BS1_5TQ;
+  hcan.Init.TimeSeg2 = CAN_BS2_2TQ;
   hcan.Init.TimeTriggeredMode = DISABLE;
   hcan.Init.AutoBusOff = DISABLE;
   hcan.Init.AutoWakeUp = DISABLE;
@@ -450,7 +447,7 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 35;
+  htim3.Init.Prescaler = 7199;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim3.Init.Period = 65535;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -464,7 +461,7 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_OC_Init(&htim3) != HAL_OK)
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -474,16 +471,19 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_INACTIVE;
-  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -533,7 +533,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -541,10 +541,17 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+float normalize_adc_value(uint16_t adc_val, float min_val, float max_val) {
+    float adc_range = 4095.0f;  // Maximum ADC value (12-bit resolution)
+    float val_range = max_val - min_val;
+    float val = ((float)adc_val / adc_range) * val_range + min_val;
+    return val;
+}
 /**
  * @brief this function interpolates it's in the name
  */
 float Interpolate_2D(float T[N][N], const float *Var, const float *RPM, float x, float y){
+
     if (x < 300.0 || x > 7000.0 || y < 20.0 || y > 200.0) {
         return -1;
     }
@@ -584,6 +591,11 @@ void Read_Sensors_F(void const * argument)
   /* Infinite loop */
   for(;;)
   {
+	  IAT_val=normalize_adc_value(Data[0],IAT_MIN_TEMP,IAT_MAX_TEMP);
+	  CLT_val=normalize_adc_value(Data[1],CLT_MIN_TEMP,CLT_MAX_TEMP);
+	  TPS_val=normalize_adc_value(Data[2],TPS_MIN_ANGLE,TPS_MAX_ANGLE);
+	  MAP_val=normalize_adc_value(Data[3],MAP_MIN_PRESSURE,MAP_MAX_PRESSURE);
+	  O2_val=normalize_adc_value(Data[4],O2_MIN_AFR,O2_MAX_AFR);
 
   }
   /* USER CODE END 5 */
@@ -602,12 +614,9 @@ void Read_lookup_F(void const * argument)
   /* Infinite loop */
   for(;;)
   {
-	 IGN= Interpolate_2D(Ignition_Timing,TBP,RPM,RPM_val,30);
-	 INJ=Interpolate_2D(Injection_Timing,TBP,RPM,RPM_val,30);
-	 IGN_time = ((360.0-IGN)/(6.0*RPM_val))*1000000; //calulate the time in us from the angle we got from the table
-	 //VE=Interpolate_2D(VE_Table,MAP,RPM,RPM_val,MAP_val);
-	 cycles_to_IGN = (uint32_t) IGN_time/65535; //how many overflows to make the IGN pulse (since TIM3 only counts to 65535 and the IGN pulse is longer than that)
-	 TIM3->CCR1=IGN_time;
+	 IGN= Interpolate_2D(Ignition_Timing,TBP,RPM,RPM_val,60);
+	 INJ=Interpolate_2D(Injection_Timing,TBP,RPM,RPM_val,60);
+	 IGN_time = ((360.0-IGN)/(6.0*RPM_val))*1000; //calulate the time in us from the angle we got from the table
   }
   /* USER CODE END Read_lookup_F */
 }
@@ -625,7 +634,7 @@ void Fire_Ignition_F(void const * argument)
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+
   }
   /* USER CODE END Fire_Ignition_F */
 }
@@ -658,10 +667,33 @@ void Fire_Injection_F(void const * argument)
 void Send_CAN_F(void const * argument)
 {
   /* USER CODE BEGIN Send_CAN_F */
+	  /*Some params*/
+  uint16_t scaled_rpm;
+  uint8_t rpm_msb,rpm_lsb,tmp_msb,tmp_lsb;
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+	scaled_rpm = (uint16_t)RPM_val;
+	rpm_msb = (scaled_rpm>>8)&0xff;
+	rpm_lsb = scaled_rpm&(0x00ff);
+	rpm_data[0] = 'R';//RPM identifier
+	rpm_data[1] = rpm_msb;
+	rpm_data[2] = rpm_lsb;
+	if(HAL_CAN_AddTxMessage(&hcan, &TxHeader, rpm_data, &CAN_Mailbox) != HAL_OK){
+		Error_Handler();
+	}
+	osDelay(5);
+	/*Sending the temperature reading*/
+	scaled_rpm = (uint16_t)IAT_val;
+	tmp_msb = (scaled_rpm>>8)&0xff;
+	tmp_lsb = scaled_rpm&(0x00ff);
+	tmp_data[0] = 'T';//Temperature identifier
+	tmp_data[1] = tmp_msb;
+	tmp_data[2] = tmp_lsb;
+	if(HAL_CAN_AddTxMessage(&hcan, &TxHeader, tmp_data, &CAN_Mailbox) != HAL_OK){
+		Error_Handler();
+	}
+	osDelay(5);
   }
   /* USER CODE END Send_CAN_F */
 }

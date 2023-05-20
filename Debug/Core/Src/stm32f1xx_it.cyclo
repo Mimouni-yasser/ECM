@@ -7,5 +7,8 @@ stm32f1xx_it.c:148:6:DebugMon_Handler	1
 stm32f1xx_it.c:161:6:SysTick_Handler	2
 stm32f1xx_it.c:190:6:EXTI3_IRQHandler	1
 stm32f1xx_it.c:204:6:DMA1_Channel1_IRQHandler	1
-stm32f1xx_it.c:218:6:TIM2_IRQHandler	1
-stm32f1xx_it.c:232:6:TIM3_IRQHandler	1
+stm32f1xx_it.c:218:6:USB_HP_CAN1_TX_IRQHandler	1
+stm32f1xx_it.c:232:6:USB_LP_CAN1_RX0_IRQHandler	1
+stm32f1xx_it.c:246:6:CAN1_RX1_IRQHandler	1
+stm32f1xx_it.c:260:6:CAN1_SCE_IRQHandler	1
+stm32f1xx_it.c:274:6:TIM2_IRQHandler	1
